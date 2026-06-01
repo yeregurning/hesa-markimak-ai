@@ -378,15 +378,31 @@ function handleMessage(nomor, teks) {
 // ─────────────────────────────────────────
 // WEBHOOK
 // ─────────────────────────────────────────
-app.get('/webhook', (req, res) => {
-  res.send('Webhook aktif');
-});
-
 app.post('/webhook', async (req, res) => {
-  console.log('====================');
+
   console.log('BODY MASUK:');
   console.log(JSON.stringify(req.body, null, 2));
-  console.log('====================');
+
+  const sender = req.body.sender || req.body.pengirim;
+  const message = req.body.message || req.body.pesan;
+
+  if (!sender || !message) {
+    console.log('Data sender/message tidak ditemukan');
+    return res.sendStatus(200);
+  }
+
+  try {
+    const balasan = handleMessage(sender, message);
+
+    console.log('PENGIRIM:', sender);
+    console.log('PESAN:', message);
+    console.log('BALASAN:', balasan);
+
+    await kirimPesan(sender, balasan);
+
+  } catch (err) {
+    console.error('ERROR:', err.response?.data || err.message);
+  }
 
   res.sendStatus(200);
 });
