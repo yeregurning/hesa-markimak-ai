@@ -18,76 +18,247 @@ const MENU = [
 ];
 
 // ─────────────────────────────────────────
-// NLP: TRAINING DATA (intent → contoh kalimat)
+// NLP PREPROCESSING: STOPWORDS (Bahasa Indonesia)
+// ─────────────────────────────────────────
+const STOPWORDS = new Set([
+  'yang', 'dan', 'di', 'ke', 'dari', 'ini', 'itu', 'dengan', 'untuk',
+  'pada', 'adalah', 'ada', 'tidak', 'saya', 'aku', 'kamu', 'anda',
+  'kita', 'kami', 'mereka', 'dia', 'ia', 'ya', 'yah', 'iya', 'ok',
+  'oke', 'okey', 'juga', 'atau', 'tapi', 'tetapi', 'namun', 'jadi',
+  'kalau', 'kalau', 'kalo', 'jika', 'bila', 'bahwa', 'karena', 'sebab',
+  'oleh', 'akan', 'sudah', 'telah', 'belum', 'bisa', 'boleh', 'harus',
+  'perlu', 'dong', 'deh', 'sih', 'nih', 'tuh', 'lah', 'kah', 'pun',
+  'lagi', 'juga', 'pula', 'baru', 'masih', 'sudah', 'lebih', 'sangat',
+  'sekali', 'banget', 'agak', 'sama', 'sekarang', 'nanti', 'tadi',
+  'kemarin', 'besok', 'begitu', 'begini', 'seperti', 'setelah', 'sebelum',
+  'ketika', 'waktu', 'saat', 'cara', 'hal', 'banyak', 'sedikit',
+  'semua', 'setiap', 'masing', 'lain', 'tersebut', 'merupakan', 'buat',
+  'bikin', 'gimana', 'bagaimana', 'kenapa', 'mengapa', 'siapa', 'mana',
+  'dimana', 'kapan', 'berapa', 'apakah', 'apa', 'gak', 'ga', 'nggak',
+  'ndak', 'tak', 'ngga', 'enggak', 'biar', 'supaya', 'agar', 'wah',
+  'yuk', 'ayo', 'mari', 'coba', 'tolong', 'mohon', 'silakan', 'please',
+  'thanks', 'makasih', 'terima', 'kasih', 'hehe', 'haha', 'wkwk',
+]);
+
+// ─────────────────────────────────────────
+// NLP PREPROCESSING: STEMMER (Bahasa Indonesia — Nazief-Adriani simplified)
+// ─────────────────────────────────────────
+class IndonesianStemmer {
+  constructor() {
+    // Prefiks yang umum
+    this.prefixes = [
+      { pattern: /^me(ng|ny|n|m)?/, replacement: '' },
+      { pattern: /^ber/, replacement: '' },
+      { pattern: /^ter/, replacement: '' },
+      { pattern: /^pe(ng|ny|n|m|r)?/, replacement: '' },
+      { pattern: /^di/, replacement: '' },
+      { pattern: /^ke/, replacement: '' },
+      { pattern: /^se/, replacement: '' },
+      { pattern: /^meng/, replacement: '' },
+      { pattern: /^mem/, replacement: '' },
+      { pattern: /^men/, replacement: '' },
+      { pattern: /^meny/, replacement: '' },
+      { pattern: /^peng/, replacement: '' },
+      { pattern: /^pem/, replacement: '' },
+      { pattern: /^pen/, replacement: '' },
+    ];
+    // Sufiks yang umum
+    this.suffixes = [
+      /kan$/, /an$/, /i$/, /lah$/, /kah$/, /nya$/, /ku$/, /mu$/,
+    ];
+    // Konfiks
+    this.confixes = [
+      { prefix: /^me/, suffix: /kan$/ },
+      { prefix: /^me/, suffix: /i$/ },
+      { prefix: /^di/, suffix: /kan$/ },
+      { prefix: /^di/, suffix: /i$/ },
+      { prefix: /^ke/, suffix: /an$/ },
+      { prefix: /^pe(r|ng|ny|n|m)?/, suffix: /an$/ },
+      { prefix: /^ber/, suffix: /an$/ },
+      { prefix: /^ber/, suffix: /kan$/ },
+      { prefix: /^ter/, suffix: /kan$/ },
+    ];
+    // Kamus kata dasar untuk validasi
+    this.baseWords = new Set([
+      'pesan', 'beli', 'bayar', 'lihat', 'tampil', 'harga', 'menu', 'produk',
+      'tambah', 'hapus', 'batal', 'lanjut', 'pilih', 'hubung', 'tanya', 'bantu',
+      'mulai', 'selesai', 'kirim', 'terima', 'minta', 'cek', 'konfirmasi',
+      'order', 'keranjang', 'checkout', 'bayar', 'transfer', 'ambil',
+      'datang', 'antar', 'tunggu', 'proses', 'selesai', 'jual', 'beli',
+    ]);
+  }
+
+  stem(word) {
+    if (word.length <= 3) return word;
+
+    // Cek kata dasar langsung
+    if (this.baseWords.has(word)) return word;
+
+    let stemmed = word;
+
+    // Coba hapus konfiks dulu
+    for (const { prefix, suffix } of this.confixes) {
+      if (prefix.test(stemmed) && suffix.test(stemmed)) {
+        const candidate = stemmed.replace(prefix, '').replace(suffix, '');
+        if (candidate.length >= 3) { stemmed = candidate; break; }
+      }
+    }
+
+    // Coba hapus sufiks
+    for (const suffix of this.suffixes) {
+      if (suffix.test(stemmed)) {
+        const candidate = stemmed.replace(suffix, '');
+        if (candidate.length >= 3) { stemmed = candidate; break; }
+      }
+    }
+
+    // Coba hapus prefiks
+    for (const { pattern, replacement } of this.prefixes) {
+      if (pattern.test(stemmed)) {
+        const candidate = stemmed.replace(pattern, replacement);
+        if (candidate.length >= 3) { stemmed = candidate; break; }
+      }
+    }
+
+    return stemmed;
+  }
+}
+
+// ─────────────────────────────────────────
+// NLP: TRAINING DATA — DATASET DIPERLUAS
 // ─────────────────────────────────────────
 const TRAINING_DATA = {
   greeting: [
-    'halo', 'hai', 'hi', 'hei', 'selamat pagi', 'selamat siang', 'selamat malam',
-    'mulai', 'start', 'alo', 'permisi', 'assalamualaikum', 'p', 'hallo',
-    'hey', 'mau tanya', 'ada yang bisa bantu',
+    'halo', 'hai', 'hi', 'hei', 'hey',
+    'selamat pagi', 'selamat siang', 'selamat sore', 'selamat malam',
+    'mulai', 'start', 'alo', 'permisi', 'assalamualaikum', 'waalaikumsalam',
+    'hallo', 'mau tanya', 'ada yang bisa bantu', 'p',
+    'selamat datang', 'hola', 'good morning', 'good night',
+    'bisa dibantu', 'ada orang', 'halo masih aktif', 'bot aktif',
+    'coba chat', 'tes', 'test', 'hello bot', 'hai bot',
+    'halo warung', 'hei ada',
   ],
   show_menu: [
-    'menu', 'lihat menu', 'daftar menu', 'ada apa aja', 'jual apa', 'produk',
-    'mau lihat menu', 'tampilkan menu', 'apa yang dijual', 'harga', 'daftar harga',
-    'ada menu apa', 'jualnya apa aja', 'list menu',
+    'menu', 'lihat menu', 'daftar menu', 'ada apa aja', 'jual apa',
+    'produk', 'mau lihat menu', 'tampilkan menu', 'apa yang dijual',
+    'harga', 'daftar harga', 'ada menu apa', 'jualnya apa aja', 'list menu',
+    'apa menunya', 'menu apa saja', 'info menu', 'katalog', 'lihat produk',
+    'produk apa saja', 'makanan apa', 'ada jual apa', 'menunya dong',
+    'mau liat menu', 'tunjukkan menu', 'menu ada apa', 'harga berapa',
+    'harganya berapa', 'list harga', 'info harga', 'berapa harganya',
+    'jenis pisang', 'varian apa saja', 'ada varian apa',
+    'mau tahu harga', 'mau tau menu', 'liat katalog',
+    'menu pisang', 'menu tersedia', 'pilihan menu',
   ],
   order: [
     'pesan', 'order', 'beli', 'mau pesan', 'mau beli', 'mau order',
     'pesen dong', 'pengen beli', 'mau pesen', 'bisa pesan', 'mau ambil',
     'mau pesen dong', 'boleh pesan', 'mau ngeorder', 'cobain',
+    'mau cobain', 'ingin pesan', 'ingin beli', 'mau nyoba',
+    'mau mesen', 'mesen dong', 'pengen pesen', 'kepingin beli',
+    'mau beli pisang', 'beli pisang', 'pesan pisang', 'minta pisang',
+    'mau jasuke', 'pesan jasuke', 'beli jasuke',
+    'mau 1', 'mau 2', 'mau 3', 'ambil 1 porsi', 'beli 2 porsi',
+    'mau satu', 'pesan dua', 'minta tiga', 'pesan satu porsi',
+    'mau nambah pesanan', 'mau order sekarang', 'langsung pesan',
+    'mau beli sekarang', 'pesan sekarang dong',
   ],
   add_cart: [
     'tambah', 'tambah lagi', 'mau tambah', 'pesan lagi', 'add', 'plus',
     'mau tambah item', 'order lagi', 'beli lagi', 'tambahin',
+    'mau nambah', 'nambah dong', 'tambahkan', 'tambahin lagi',
+    'pesan lagi dong', 'mau beli lagi', 'ada yang lain', 'item lain',
+    'produk lain', 'pilih lagi', 'tambah menu lain', 'mau tambah pesanan',
+    'tambah satu lagi', 'tambahin satu', 'add to cart', 'nambah pesanan',
   ],
   view_cart: [
     'keranjang', 'lihat keranjang', 'pesanan saya', 'apa yang sudah dipesan',
     'cek pesanan', 'pesanan ku', 'cart', 'recap', 'ringkasan',
     'udah pesen apa aja', 'pesanan gue',
+    'cek cart', 'lihat cart', 'isi keranjang', 'sudah pesan apa',
+    'total belanja', 'pesananku apa', 'rekap pesanan', 'summary pesanan',
+    'list pesanan', 'daftar pesanan', 'pesanan sejauh ini',
+    'sudah ada apa aja', 'apa saja yang dipesan', 'pesanan sementara',
+    'mau cek pesanan', 'lihat pesanan', 'review pesanan', 'pesanan saat ini',
   ],
   checkout: [
     'bayar', 'checkout', 'lanjut bayar', 'mau bayar', 'proses pembayaran',
     'bayar sekarang', 'konfirmasi', 'selesai pesan', 'mau checkout',
     'lanjutkan pembayaran', 'pay', 'proses',
+    'mau bayar sekarang', 'lanjut ke pembayaran', 'selesai deh',
+    'sudah selesai pilih', 'mau langsung bayar', 'langsung bayar',
+    'finalisasi', 'pesan sekarang bayar', 'konfirmasi pesanan',
+    'mau konfirmasi', 'lanjut transaksi', 'beres pesan', 'udah fix',
+    'fix pesanannya', 'oke bayar', 'siap bayar', 'mau transfer',
+    'mau cod', 'bayar lewat dana', 'bayar lewat ovo', 'bayar lewat bri',
+    'mau pilih pembayaran', 'pilih cara bayar',
   ],
   contact_cs: [
     'cs', 'customer service', 'hubungi cs', 'manusia', 'admin', 'bantuan',
     'minta tolong', 'komplain', 'ada masalah', 'bisa bicara manusia',
     'sambungkan ke cs', 'operator', 'agen', 'chat admin',
+    'mau ngobrol sama manusia', 'butuh bantuan', 'ada kendala',
+    'masalah pembayaran', 'ada pertanyaan', 'minta info lebih',
+    'hubungi admin', 'kontak penjual', 'kontak seller', 'chat penjual',
+    'ada keluhan', 'laporan masalah', 'error', 'ga bisa bayar',
+    'tidak bisa order', 'nomor whatsapp admin', 'hubungi langsung',
+    'mau tanya ke orang', 'butuh bantuan manusia',
   ],
   cancel: [
     'batal', 'cancel', 'gak jadi', 'tidak jadi', 'hapus pesanan',
     'batalkan', 'reset', 'ulang', 'mulai ulang', 'ga jadi',
+    'hapus cart', 'kosongkan keranjang', 'mulai dari awal',
+    'mau reset', 'batal semua', 'batalkan semua', 'hapus semua',
+    'start over', 'dari awal lagi', 'mau mulai ulang',
+    'batal pesan', 'tidak jadi pesan', 'ga jadi beli',
+    'gak jadi beli', 'urungkan pesanan', 'pesanannya dibatalkan',
+    'mau hapus pesanan', 'hilangkan pesanan', 'pesanan salah',
+    'mau ganti pesanan', 'ulangi dari awal',
   ],
 };
 
 // ─────────────────────────────────────────
-// NLP ENGINE: TF-IDF + Naive Bayes Hybrid
+// NLP ENGINE: TF-IDF + Naive Bayes + Stemming + Stopword Removal
 // ─────────────────────────────────────────
 class NLPEngine {
   constructor() {
+    this.stemmer = new IndonesianStemmer();
     this.vocab = new Set();
     this.idf = {};
-    this.classProb = {};    // P(class)
-    this.wordClassProb = {}; // P(word|class) untuk Naive Bayes
-    this.tfidfVectors = {}; // TF-IDF vector per class
+    this.classProb = {};
+    this.wordClassProb = {};
+    this.tfidfVectors = {};
     this.train(TRAINING_DATA);
   }
 
-  // Tokenizer: lowercase, hapus tanda baca, split kata
+  /**
+   * PREPROCESSING PIPELINE:
+   * 1. Lowercase
+   * 2. Hapus tanda baca & angka
+   * 3. Tokenisasi
+   * 4. Stopword removal
+   * 5. Stemming (Nazief-Adriani simplified)
+   */
   tokenize(text) {
-    return text
+    const tokens = text
       .toLowerCase()
       .replace(/[^\w\s]/g, ' ')
+      .replace(/\d+/g, ' ')
       .split(/\s+/)
-      .filter(t => t.length > 0);
+      .filter(t => t.length > 1);
+
+    // Stopword removal + stemming
+    return tokens
+      .filter(t => !STOPWORDS.has(t))
+      .map(t => this.stemmer.stem(t));
   }
 
-  // Hitung TF dari token list
+  // Hitung TF (Term Frequency) dari token list
   tf(tokens) {
     const freq = {};
     tokens.forEach(t => { freq[t] = (freq[t] || 0) + 1; });
     const total = tokens.length;
+    if (total === 0) return freq;
     Object.keys(freq).forEach(t => { freq[t] /= total; });
     return freq;
   }
@@ -96,7 +267,6 @@ class NLPEngine {
     const allDocs = [];
     const classDocs = {};
 
-    // Kumpulkan semua dokumen per class
     Object.entries(data).forEach(([intent, sentences]) => {
       classDocs[intent] = sentences.map(s => this.tokenize(s));
       classDocs[intent].forEach(tokens => {
@@ -108,28 +278,29 @@ class NLPEngine {
     const N = allDocs.length;
     const vocabArr = [...this.vocab];
 
-    // Hitung IDF
+    // Hitung IDF (Inverse Document Frequency)
     vocabArr.forEach(word => {
       const docsWithWord = allDocs.filter(d => d.tokens.includes(word)).length;
+      // Smooth IDF: log((N+1)/(df+1)) + 1
       this.idf[word] = Math.log((N + 1) / (docsWithWord + 1)) + 1;
     });
 
-    // Hitung P(class) dan P(word|class) untuk Naive Bayes
+    // Hitung class probability dan P(word|class) untuk Naive Bayes
     Object.entries(classDocs).forEach(([intent, docs]) => {
       this.classProb[intent] = Math.log(docs.length / N);
 
-      // Gabungkan semua token dari class ini
       const allTokens = docs.flat();
       const freq = {};
       allTokens.forEach(t => { freq[t] = (freq[t] || 0) + 1; });
-      const total = allTokens.length + vocabArr.length; // Laplace smoothing
+      // Laplace smoothing: +1 di numerator, +|V| di denominator
+      const total = allTokens.length + vocabArr.length;
 
       this.wordClassProb[intent] = {};
       vocabArr.forEach(word => {
         this.wordClassProb[intent][word] = Math.log(((freq[word] || 0) + 1) / total);
       });
 
-      // Buat TF-IDF vector per class (rata-rata semua dokumen)
+      // TF-IDF vector per class (rata-rata semua dokumen dalam class)
       const tfidfSum = {};
       docs.forEach(tokens => {
         const tfScore = this.tf(tokens);
@@ -137,11 +308,15 @@ class NLPEngine {
           tfidfSum[t] = (tfidfSum[t] || 0) + (tfScore[t] * (this.idf[t] || 1));
         });
       });
+      // Normalisasi dengan jumlah dokumen dalam class
+      Object.keys(tfidfSum).forEach(t => {
+        tfidfSum[t] /= docs.length;
+      });
       this.tfidfVectors[intent] = tfidfSum;
     });
   }
 
-  // Cosine similarity antara dua vektor (object)
+  // Cosine Similarity antara dua vektor (representasi sebagai object)
   cosineSim(vecA, vecB) {
     const keysA = Object.keys(vecA);
     let dot = 0, magA = 0, magB = 0;
@@ -154,51 +329,73 @@ class NLPEngine {
     return dot / (Math.sqrt(magA) * Math.sqrt(magB));
   }
 
-  // Klasifikasi: hybrid TF-IDF cosine + Naive Bayes
+  /**
+   * KLASIFIKASI: Hybrid TF-IDF Cosine Similarity + Multinomial Naive Bayes
+   *
+   * Formula akhir:
+   *   score(c) = α × P_NB(c|d) + (1-α) × CosineSim(tfidf_d, tfidf_c)
+   *   α = 0.6 (bobot Naive Bayes), 1-α = 0.4 (bobot TF-IDF Cosine)
+   *
+   * Confidence threshold = 0.15 (tolak jika terlalu rendah)
+   */
   classify(text) {
     const tokens = this.tokenize(text);
     if (tokens.length === 0) return { intent: 'unknown', confidence: 0 };
 
+    // Buat TF-IDF vector untuk input query
     const tfScore = this.tf(tokens);
     const inputVec = {};
     tokens.forEach(t => {
-      inputVec[t] = tfScore[t] * (this.idf[t] || 1);
+      inputVec[t] = tfScore[t] * (this.idf[t] || 0.5); // OOV (out-of-vocab) = 0.5
     });
 
     const scores = {};
     Object.keys(this.classProb).forEach(intent => {
-      // Skor Naive Bayes
+      // Skor Multinomial Naive Bayes (log-space)
       let nbScore = this.classProb[intent];
       tokens.forEach(t => {
         if (this.wordClassProb[intent][t] !== undefined) {
           nbScore += this.wordClassProb[intent][t];
+        } else {
+          // Smoothing untuk OOV words: gunakan probabilitas minimum dari vocab
+          nbScore += Math.log(1 / (Object.keys(this.wordClassProb[intent]).length + this.vocab.size));
         }
       });
 
-      // Skor TF-IDF cosine
+      // Skor TF-IDF Cosine Similarity
       const cosScore = this.cosineSim(inputVec, this.tfidfVectors[intent]);
 
-      // Hybrid: normalisasi NB (exp) lalu gabung dengan cosine
       scores[intent] = { nb: nbScore, cos: cosScore };
     });
 
-    // Normalisasi NB ke probabilitas
+    // Normalisasi NB dari log-space ke probabilitas (softmax)
     const nbMax = Math.max(...Object.values(scores).map(s => s.nb));
     let nbSum = 0;
-    Object.values(scores).forEach(s => { s.nbNorm = Math.exp(s.nb - nbMax); nbSum += s.nbNorm; });
+    Object.values(scores).forEach(s => {
+      s.nbNorm = Math.exp(s.nb - nbMax); // numerically stable softmax
+      nbSum += s.nbNorm;
+    });
     Object.values(scores).forEach(s => { s.nbNorm /= nbSum; });
 
-    // Hybrid score: 60% NB + 40% cosine
+    // Hybrid score: 60% NB + 40% TF-IDF Cosine
     const hybrid = {};
     Object.entries(scores).forEach(([intent, s]) => {
       hybrid[intent] = 0.6 * s.nbNorm + 0.4 * s.cos;
     });
 
-    const best = Object.entries(hybrid).sort((a, b) => b[1] - a[1])[0];
-    return { intent: best[0], confidence: best[1] };
+    const sorted = Object.entries(hybrid).sort((a, b) => b[1] - a[1]);
+    const [bestIntent, bestScore] = sorted[0];
+
+    // Confidence threshold: jika terlalu rendah, kembalikan unknown
+    const CONFIDENCE_THRESHOLD = 0.15;
+    if (bestScore < CONFIDENCE_THRESHOLD) {
+      return { intent: 'unknown', confidence: bestScore };
+    }
+
+    return { intent: bestIntent, confidence: bestScore };
   }
 
-  // Ekstrak angka dari teks
+  // Ekstrak angka dari teks (kata atau digit)
   extractNumber(text) {
     const words = {
       'satu': 1, 'dua': 2, 'tiga': 3, 'empat': 4, 'lima': 5,
@@ -211,12 +408,17 @@ class NLPEngine {
     return match ? parseInt(match[0]) : null;
   }
 
-  // Deteksi menu yang disebut dalam teks
-  // Prioritas: nama produk eksplisit > shorthand > nomor menu
+  /**
+   * Deteksi item menu yang disebut dalam teks.
+   * Prioritas:
+   * 1. Nama produk eksplisit (minimal 2 kata cocok)
+   * 2. Shorthand/keyword varian
+   * 3. Nomor menu (fallback terakhir)
+   */
   detectMenuItem(text) {
     const lower = text.toLowerCase();
 
-    // 1. Cek nama produk (minimal 2 kata cocok)
+    // 1. Nama produk eksplisit
     for (const item of MENU) {
       const keywords = item.name.toLowerCase().split(' ');
       const matchCount = keywords.filter(k => lower.includes(k)).length;
@@ -225,13 +427,13 @@ class NLPEngine {
 
     // 2. Shorthand keyword
     if (lower.includes('jasuke') || lower.includes('jagung')) return MENU[5];
-    if (lower.includes('tiramisu')) return MENU[4];
-    if (lower.includes('matcha')) return MENU[2];
-    if (lower.includes('coklat') || lower.includes('choco')) return MENU[3];
-    if (lower.includes('mix')) return MENU[1];
-    if (lower.includes('original')) return MENU[0];
+    if (lower.includes('tiramisu'))                             return MENU[4];
+    if (lower.includes('matcha'))                               return MENU[2];
+    if (lower.includes('coklat') || lower.includes('choco'))   return MENU[3];
+    if (lower.includes('mix'))                                  return MENU[1];
+    if (lower.includes('original') || lower.includes('ori'))   return MENU[0];
 
-    // 3. Nomor menu (hanya fallback terakhir)
+    // 3. Nomor menu (fallback)
     const numStr = text.match(/\b[1-6]\b/);
     if (numStr) return MENU[parseInt(numStr[0]) - 1];
 
@@ -286,12 +488,12 @@ async function kirimPesan(nomor, pesan) {
 // ─────────────────────────────────────────
 function handleMessage(nomor, teks) {
   const s = getSession(nomor);
-  const lower = teks.toLowerCase().trim();
 
   // ── Konteks: menunggu jumlah porsi ──
   if (s.awaitQty) {
     const qty = nlp.extractNumber(teks);
-    if (!qty || qty < 1) return '⚠️ Masukkan jumlah yang valid ya, minimal 1 porsi.\n\nMisal: ketik *2* atau *dua*';
+    if (!qty || qty < 1)
+      return '⚠️ Masukkan jumlah yang valid ya, minimal 1 porsi.\n\nMisal: ketik *2* atau *dua*';
     const item = MENU.find(m => m.id === s.awaitQty);
     const exist = s.cart.find(c => c.id === item.id);
     if (exist) exist.qty += qty; else s.cart.push({ ...item, qty });
@@ -317,12 +519,12 @@ function handleMessage(nomor, teks) {
     return '⚠️ Pilih angka 1–5 ya untuk metode pembayaran.';
   }
 
-  // ── Klasifikasi intent via NLP ──
+  // ── Klasifikasi intent via NLP (TF-IDF + Naive Bayes + Stemming + Stopword) ──
   const { intent, confidence } = nlp.classify(teks);
 
-  // Jika ada item menu yang disebut, langsung proses order
+  // Jika ada item menu yang disebut eksplisit, prioritaskan alur order
   const mentionedItem = nlp.detectMenuItem(teks);
-  if (mentionedItem && (intent === 'order' || intent === 'show_menu' || confidence < 0.3)) {
+  if (mentionedItem && (intent === 'order' || intent === 'add_cart' || intent === 'show_menu' || confidence < 0.25)) {
     const qty = nlp.extractNumber(teks);
     if (qty) {
       const exist = s.cart.find(c => c.id === mentionedItem.id);
@@ -345,9 +547,6 @@ function handleMessage(nomor, teks) {
       return buildMenuText();
 
     case 'order':
-      s.step = 'menu';
-      return buildMenuText();
-
     case 'add_cart':
       s.step = 'menu';
       return buildMenuText();
@@ -379,35 +578,16 @@ function handleMessage(nomor, teks) {
 // WEBHOOK
 // ─────────────────────────────────────────
 app.post('/webhook', async (req, res) => {
-
-  console.log('BODY MASUK:');
-  console.log(JSON.stringify(req.body, null, 2));
-
-  const sender = req.body.sender || req.body.pengirim;
-  const message = req.body.message || req.body.pesan;
-
-  if (!sender || !message) {
-    console.log('Data sender/message tidak ditemukan');
-    return res.sendStatus(200);
-  }
-
+  const { sender, message } = req.body;
+  if (!sender || !message) return res.sendStatus(200);
   try {
     const balasan = handleMessage(sender, message);
-
-    console.log('PENGIRIM:', sender);
-    console.log('PESAN:', message);
-    console.log('BALASAN:', balasan);
-
     await kirimPesan(sender, balasan);
-
   } catch (err) {
-    console.error('ERROR:', err.response?.data || err.message);
+    console.error('Error:', err.message);
   }
-
   res.sendStatus(200);
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server berjalan di port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🍌 Warung HESA Chatbot running on port ${PORT}`));
